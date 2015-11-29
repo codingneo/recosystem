@@ -38,7 +38,9 @@ struct mf_parameter
     mf_int nr_iters;
     mf_float lambda; 
     mf_float eta;
+    mf_float alpha; // parameter for implicit feedback
     mf_int do_nmf;
+    mf_int do_implicit; // flag for implicit feedback
     mf_int quiet; 
     mf_int copy_data;
 };

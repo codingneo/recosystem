@@ -585,9 +585,25 @@ void sg(vector<mf_node*> &ptrs, mf_model &model, Scheduler &sched,
                        _mm_load_ps(p+d), _mm_load_ps(q+d)));
             XMMe = _mm_hadd_ps(XMMe, XMMe);
             XMMe = _mm_hadd_ps(XMMe, XMMe);
-            XMMe = _mm_sub_ps(_mm_set1_ps(N->r), XMMe);
-            XMMloss = _mm_add_pd(XMMloss,
-                      _mm_cvtps_pd(_mm_mul_ps(XMMe, XMMe)));
+
+            if (param.do_implicit) {
+                XMMe = _mm_sub_ps(_mm_set1_ps((N->r > 0) ? 1 : 0), XMMe);
+                XMMloss = _mm_add_pd(XMMloss,
+                    _mm_cvtps_pd(
+                        _mm_mul_ps(
+                            _mm_set1_ps(1 + param.alpha * N->r), 
+                            _mm_mul_ps(XMMe, XMMe)
+                        )
+                    )
+                );
+                XMMe = _mm_mul_ps(
+                    _mm_set1_ps(1 + param.alpha * N->r), 
+                    XMMe);
+            } else {
+                XMMe = _mm_sub_ps(_mm_set1_ps(N->r), XMMe);
+                XMMloss = _mm_add_pd(XMMloss,
+                    _mm_cvtps_pd(_mm_mul_ps(XMMe, XMMe)));
+            }
 
             sg_update(p, q, pG, qG, 0, kALIGN, XMMeta, XMMlambda,
                       XMMe, XMMrk_slow, param.do_nmf);
@@ -629,10 +645,28 @@ void sg(vector<mf_node*> &ptrs, mf_model &model, Scheduler &sched,
             XMMe = _mm256_add_ps(XMMe, _mm256_permute2f128_ps(XMMe, XMMe, 1));
             XMMe = _mm256_hadd_ps(XMMe, XMMe);
             XMMe = _mm256_hadd_ps(XMMe, XMMe);
-            XMMe = _mm256_sub_ps(_mm256_broadcast_ss(&N->r), XMMe);
-            XMMloss = _mm_add_pd(XMMloss,
-                      _mm_cvtps_pd(_mm256_castps256_ps128(
-                      _mm256_mul_ps(XMMe, XMMe))));
+
+            if (param.do_implicit) {
+                XMMe = _mm256_sub_ps(_mm256_broadcast_ss((&N->r > 0) ? 1 : 0), XMMe);
+                XMMloss = _mm_add_pd(XMMloss,
+                    _mm_cvtps_pd(
+                        _mm256_castps256_ps128(
+                            _mm256_mul_ps(
+                                _mm256_set1_ps(1 + param.alpha * N->r),
+                                _mm256_mul_ps(XMMe, XMMe)
+                            )
+                        )
+                    )
+                );
+                XMMe = _mm256_mul_ps(
+                    _mm256_set1_ps(1 + param.alpha * N->r), 
+                    XMMe);
+            } else {
+                XMMe = _mm256_sub_ps(_mm256_broadcast_ss(&N->r), XMMe);
+                XMMloss = _mm_add_pd(XMMloss,
+                    _mm_cvtps_pd(_mm256_castps256_ps128(
+                        _mm256_mul_ps(XMMe, XMMe))));                
+            }
 
             sg_update(p, q, pG, qG, 0, kALIGN, XMMeta, XMMlambda,
                       XMMe, XMMrk_slow, param.do_nmf);
@@ -665,10 +699,23 @@ void sg(vector<mf_node*> &ptrs, mf_model &model, Scheduler &sched,
             mf_float *pG = PG+N->u*2;
             mf_float *qG = QG+N->v*2;
 
-            mf_float error = N->r;
+            mf_float error;
+            if (param.do_implicit) {
+                pref = (N->r>0) ? 1 : 0;
+                conf = 1+param.alpha*N->r;
+            } else {
+                pref  = N->r;
+                conf = 1;
+            }
+
+            error = pref;
             for(mf_int d = 0; d < model.k; d++)
                 error -= p[d]*q[d];
-            loss += error*error;
+
+            loss += conf*error*error;
+
+            if (param.do_implicit)
+                error *= conf;
 
             sg_update(p, q, pG, qG, 0, kALIGN, param.eta,
                       param.lambda, error, rk_slow, param.do_nmf);
@@ -1068,6 +1115,7 @@ shared_ptr<mf_model> fpsg(
     shared_ptr<mf_model> model(init_model(tr->m, tr->n, param.k, k_aligned),
                                [] (mf_model *ptr) { mf_destroy_model(&ptr); });
 
+
     mf_float std_dev = calc_std_dev(*tr);
 
     scale_problem(*tr, 1.0/std_dev);
@@ -1413,7 +1461,9 @@ mf_parameter mf_get_default_param()
     param.nr_iters = 20;
     param.lambda = 0.1f;
     param.eta = 0.1f;
+    param.alpha = 40.0f;
     param.do_nmf = false;
+    param.do_implicit = false;
     param.quiet = false;
     param.copy_data = true;
 

@@ -57,6 +57,14 @@ TrainOption parse_train_option(SEXP train_path_,
     if(option.param.nr_threads <= 0)
         throw std::invalid_argument("number of threads should be greater than zero");
 
+    // alpha for implicit feedback
+    option.param.do_implicit = Rcpp::as<mf_int>(opts["implicit"]);
+    if (option.param.do_implicit > 0) {
+        option.param.alpha = Rcpp::as<mf_float>(opts["alpha"]);
+        if (option.param.alpha <= 0)
+            throw std::invalid_argument("implicit feedback parameter should be greater than zero");            
+    }
+
     // Whether perform NMF or not
     option.param.do_nmf = Rcpp::as<mf_int>(opts["nmf"]);
 
