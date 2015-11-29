@@ -692,6 +692,8 @@ void sg(vector<mf_node*> &ptrs, mf_model &model, Scheduler &sched,
     {
         mf_int block = sched.get_job();
         mf_double loss = 0;
+        mf_int pref;
+        mf_int conf;
         for(mf_node *N = ptrs[block]; N != ptrs[block+1]; N++)
         {
             mf_float *p = P+(mf_long)N->u*model.k;
